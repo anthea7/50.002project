@@ -1,0 +1,40 @@
+global Boo{
+  const AND=4d8;   //011000
+  const OR =4d14;   //011110
+  const NOT=4d15;
+  const XOR=4d6;   //010110
+  const LDR=4d10;   //011010
+  const NAND=4d9;   //011001
+  const NOR=4d11;   //011011
+  const LDB=4d12;   //011100
+}
+module boole (            //define boolean module
+    input a[32],           //get input from a
+    input b[32],           //get input form b
+    input alufn[4],       //get Boolean sub alufn
+    output s[32]           //output result
+  ) {
+
+  always {                
+    s=32d0;                //set the output 0 by default
+    case(alufn){          //choose from sub alufn
+    Boo.AND:              
+      s=a&b;              //AND function
+    Boo.OR:
+      s=a|b;              //OR function
+    Boo.XOR:
+      s=a^b;              //XOR function
+    Boo.LDR:
+      s=a;                //LDR function (output a)
+    Boo.NOT:
+      s=~a;               //NOT function
+    Boo.NAND:
+      s=~(a&b);           //NAND function
+    Boo.NOR:              
+      s=~(a|b);           //NOR function
+    Boo.LDB:
+      s=b;                //LDB function (output b)
+      
+    }
+  }
+}

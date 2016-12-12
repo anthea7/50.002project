@@ -1,0 +1,32 @@
+global Com{
+  const CMPEQ=4d3; //110011
+  const CMPLT=4d5; //110101
+  const CMPLE=4d7; //110111
+}
+module compare (
+    input a[32],                          //input a
+    input b[32],                          //input b 
+    input alufn[4],                      //input alufn
+    output s[32]                          //output results
+  ) {
+  
+  arithmetic testarithmetic;
+  
+
+  always {
+   testarithmetic.a=a;
+   testarithmetic.b=b;
+   testarithmetic.alufn=6d1;
+     
+   s=32d0;                                //set output default to 0
+    case(alufn){
+      Com.CMPEQ:                         //output 1 if a=b 
+        s=testarithmetic.z;
+      Com.CMPLT:                         //output 1 if a<b 
+        s=testarithmetic.n^testarithmetic.v;
+      Com.CMPLE:                         //output 1 if a<=b
+        s=testarithmetic.z|(testarithmetic.n^testarithmetic.v); 
+      
+    }
+  }
+}

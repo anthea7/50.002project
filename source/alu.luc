@@ -1,0 +1,62 @@
+
+global Inst{               //to define the instrucions as constants
+  const ARITH=2d0;         //00
+  const BOOLE=2d1;         //01
+  const SHIFT=2d2;         //10
+  const CMP=2d3;           //11
+}
+
+module alu (
+    input a[32],            //input a into alu
+    input b[32],            //input b into alu
+    input alufn[6],        //assign alufn
+    output s[32]            //output the calculation results
+  ) {
+  
+  
+   sig arithmeticResult[32];     //hold the result for arithmetic calculations
+   sig booleanResult[32];        //hold the result for boolean calulaitons
+   sig shiftResult[32];          //hold the result for shift calculations
+   sig compareResult[32];        //hold the result for compare calculations
+  
+   arithmetic runArithmetic;    //invoke an arithmetic module
+   boole runBoolean;            //invoke a boole module
+   shift runShift;              //invoke a shift module
+   compare runCompare;          //invoke a compare module
+  
+  
+  always {
+    s = 32d0;                               //set the result default to 0
+    runArithmetic.a=a;                     //pass input a to arithmetic instance
+    runArithmetic.b=b;                     //pass input b to arithmetic instance
+    runArithmetic.alufn=alufn[3:0];        //pass alufn to arithmetic instance
+    arithmeticResult=runArithmetic.s;      //keep the result of arithmetic calculation
+    
+    runBoolean.a=a;                        //pass input a to boole instance
+    runBoolean.b=b;                        //pass input b to boole instance
+    runBoolean.alufn=alufn[3:0];           //pass alufn to boole instance
+    booleanResult=runBoolean.s;            //keep the result of boole calculation
+    
+    runShift.a=a;                          //pass input a to shift instance
+    runShift.b=b;                          //pass input b to shift instance
+    runShift.alufn=alufn[3:0];             //pass alufn to shift instance
+    shiftResult=runShift.s;                //keep the result of shift calculation
+    
+    runCompare.a=a;                        //pass the input a to compare instance
+    runCompare.b=b;                        //pass the input b to compare instance
+    runCompare.alufn=alufn[3:0];           //pass alufn to compare instance
+    compareResult=runCompare.s;            //keep the result of boole calculation
+    
+    case(alufn[5:4]){                      //choose from the instructions
+       Inst.ARITH:                         //arithmetic calculation
+         s=arithmeticResult;
+       Inst.BOOLE:                         //Boolean calculation
+         s=booleanResult; 
+       Inst.SHIFT:                         //shift calculation
+         s=shiftResult;
+       Inst.CMP:                           //compare calculation
+         s=compareResult;      
+    }    
+  
+}
+}

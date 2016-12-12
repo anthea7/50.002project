@@ -1,0 +1,58 @@
+global Ari{
+  const ADD=4d0;    //000000
+  const SUB=4d1;    //000001
+  const MUL=4d2;    //000010
+  const DIV=4d3;    //000011
+  const SQU=4d4;    //000100
+  const ABS=4d5;    //000101
+}
+
+
+
+module arithmetic (   //define arithmetic module
+   input a[32],        //input a 
+   input b[32],        //input b 
+   input alufn[4],    //input alufn 
+   output s[32],        //return result
+   output z,
+   output v,
+   output n
+  ) {
+  
+  
+  sig arithmeticsignal[32];
+  sig xb[32];
+
+  
+  always {
+    s=32d0;               //set result default to 0
+    
+    xb=b^32b11111111111111111111111111111111;
+
+    case(alufn){         
+    Ari.ADD:             //ADD calculation
+      arithmeticsignal=a+b;
+    Ari.SUB:             //SUB calculation
+      arithmeticsignal=a-b;
+    Ari.MUL:             //MULiply calculation
+      arithmeticsignal=a*b;
+    Ari.DIV:             //DIVide calculation
+      arithmeticsignal=a/b;  
+    Ari.SQU:             //SQUare calculation
+      arithmeticsignal=a*a;
+    Ari.ABS:             //ABSolute calculation
+      if(a>b) arithmeticsignal=a-b;
+        else arithmeticsignal=b-a;
+    }
+    
+    s=arithmeticsignal;
+    if (arithmeticsignal==32d0) z=1;
+    else z=0;
+    
+    v= (a[31]&xb[31]&(~arithmeticsignal[31]))|((~a[31])&(~xb[31])&arithmeticsignal[31]);
+  
+    if (arithmeticsignal[31]==1) n=1;
+    else n=0;
+    
+  }
+}

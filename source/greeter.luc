@@ -1,0 +1,539 @@
+
+   module greeter (
+    input clk,         // clock
+    input rst,         // reset
+    input new_rx,      // new RX flag
+    input rx_data[8],  // RX data
+    output new_tx,     // new TX flag
+    output tx_data[8], // TX data
+    input tx_busy,      // TX is busy flag
+    input io_button[5],    // 5 buttons on IO Shield
+    output led[16]
+  ) {
+ 
+  const HELLO_TEXT = $reverse("\r\nHello @!\r\n"); // reverse so index 0 is the left most letter
+  const PROMPT_TEXT = $reverse("Please type your direction: ");
+  const WORD_TEXT = $reverse("GOADBEOFFODEAXAO");
+  sig buffer[4][8];
+ 
+  .clk(clk) {
+    .rst(rst) {
+      fsm state = {INIT, IDLE, PROMPT, LISTEN, HELLO, PRINT,PRINT2,PRINT3,COPY, ROTATION,PUSH1,PUSH2,PUSH3,PUSH4,PUSH0, ADD,BRAIN,GENERATE}; // our state machine
+    }
+    // we need our counters to be large enough to store all the indices of our text
+    dff hello_count[$clog2(HELLO_TEXT.WIDTH[0])]; // HELLO_TEXT is 2D so WIDTH[0] gets the first dimension
+    dff prompt_count[$clog2(PROMPT_TEXT.WIDTH[0])];
+    dff name_count[4]; // 5 allows for 2^4 = 16 letters
+    dff enter_switch;  // to control inserting space when it is 0
+    dff address_count[4]; // to control the address of simple_ram bridge
+   
+    dff right_rotation[3]; // we use this to specify number of right rotations required for non-left mo
+    dff push_count[2];
+    dff add_count[1];
+    dff right_rotation2[3];
+    dff generate_count[4];
+    dff zero[1];
+    dff copy_count[1];
+    dff counter[25];
+    dff led_count[16];
+   
+    // we need our RAM to have an entry for every value of name_count
+    simple_ram ram (#SIZE(8), #DEPTH($pow(2,name_count.WIDTH)));
+    simple_ram bridge (#SIZE(8), #DEPTH($pow(2,name_count.WIDTH)));
+  }
+ 
+ alu alu1;
+ alu alu2;
+ alu alu3;
+  
+  always {
+    alu1.a=counter.q[24];
+    alu1.b=1;
+    alu1.alufn=6b110011;
+    
+    alu2.a=name_count.q;
+    alu2.b=2;
+    alu2.alufn=6b100000;
+    
+    alu3.a=~name_count.q;
+    alu3.b=2;
+    alu3.alufn=6b100001;
+    
+    
+    
+    led=led_count.q;  
+    ram.address = name_count.q; // use name_count as the address
+    ram.write_data = 8hxx;      // don't care
+    ram.write_en = 0;           // read by default
+    
+    bridge.address = address_count.q; // use name_count as the address
+    bridge.write_data = 8hxx;      // don't care
+    bridge.write_en = 0;           // read by default
+ 
+    new_tx = 0;                 // default to no new data
+    tx_data = 8hxx;             // don't care
+    
+    buffer=4x{{8b00}};
+    
+    
+    
+    case (state.q) { // our FSM
+     
+      state.INIT:
+      copy_count.d=1;
+        generate_count.d=4;
+        ram.write_en = 1;
+        ram.write_data = WORD_TEXT[name_count.q]; // put the data series in WORD_TEXT into ram
+        name_count.d = name_count.q + 1;
+        if (&name_count.q){
+          state.d = state.IDLE;
+        }
+       
+      // IDLE: Reset everything and wait for a new byte.
+      state.IDLE:
+      zero.d=0;
+        right_rotation.d=0;
+        push_count.d=0;
+        add_count.d=0;
+        right_rotation2.d=0;
+       
+        hello_count.d = 0;
+        prompt_count.d = 0;
+        name_count.d = 0;
+       
+        
+        if (alu1.s==1){
+        counter.d=0;
+          state.d = state.PROMPT;} 
+ 
+      // PROMPT: Print out name prompt.
+      state.PROMPT:
+        
+          prompt_count.d = prompt_count.q + 1;   // move to the next letter
+          new_tx = 1;                            // send data
+          tx_data = PROMPT_TEXT[prompt_count.q]; // send letter from PROMPT_TEXT
+          if (prompt_count.q == PROMPT_TEXT.WIDTH[0] - 1) // no more letters
+            state.d = state.LISTEN;              // change states
+        
+ 
+      // LISTEN: Listen to the user as they type his/her name.
+      state.LISTEN:
+       /* if (new_rx) { // wait for a new byte
+          ram.write_data = rx_data;        // write the received letter to RAM
+          ram.write_en = 0;                // (not enable) signal we want to write
+          name_count.d = name_count.q + 1; // increment the address
+          // We aren't checking tx_busy here that means if someone types super
+          // fast we could drop bytes. In practice this doesn't happen.
+          new_tx = rx_data != "\n"; //&& rx_data != "\r" && rx_data != "w" && rx_data != "a" && rx_data != "s" && rx_data != "d"; // only echo non-new line characters and directional letters
+          tx_data = rx_data; // echo text back so you can see what you type
+          // if we run out of space or they pressed enter
+          //if (&name_count.q)
+        */
+            case (io_button){
+              5b00010: state.d = state.INIT; name_count.d = 0; // reset name_count  CENTER io_button
+              5b01000:  
+                   name_count.d = 0;  //LEFT
+                   right_rotation.d=4;
+                   push_count.d=1;
+                   add_count.d=1;
+                   right_rotation2.d=0;
+            state.d = state.BRAIN;
+
+              5b00001:      //UP
+                right_rotation.d=3;
+                push_count.d=1;
+                add_count.d=1;
+                right_rotation2.d=1;
+                name_count.d = 0; // reset name_count
+            state.d = state.BRAIN;
+              
+              5b10000:      //RIGHT
+                right_rotation.d=2;
+                push_count.d=1;
+                add_count.d=1;
+                right_rotation2.d=2;
+                name_count.d = 0; // reset name_count
+            state.d = state.BRAIN;
+
+              
+              5b00100:      // DOWN
+                right_rotation.d=1;
+                push_count.d=1;
+                add_count.d=1;
+                right_rotation2.d=3;
+                name_count.d = 0;
+            state.d = state.BRAIN;
+          default:
+          state.d = state.LISTEN;
+                 
+            
+             
+         }
+          
+       
+      state.BRAIN:
+      
+        
+        
+       if(right_rotation.q!=0 ){
+        right_rotation.d=right_rotation.q-1;
+        state.d = state.ROTATION;}
+          
+      // else{state.d=state.PRINT;}
+            
+       else  if(push_count.q!=0){
+       // state.d=state.PRINT;
+        push_count.d=0;
+        state.d=state.PUSH0;
+          }
+         
+      /* else if (add_count.q!=0){
+        add_count.d=0;
+          address_count.d=0;
+          name_count.d = 0;
+          state.d=state.ADD;
+          }
+        */
+       else if(right_rotation2.q!=0 ){
+        right_rotation2.d=right_rotation2.q-1;
+        state.d = state.ROTATION;}
+          else{
+        name_count.d=0;
+        state.d=state.PRINT;}
+ 
+ 
+ 
+      state.GENERATE:
+          name_count.d=name_count.q+1;
+          if(ram.read_data=="O"){
+            ram.write_data="A";
+            name_count.d=0;
+            generate_count.d=generate_count.q+3;
+            state.d=state.PRINT;
+          }
+ 
+      // HELLO: Prints the hello text with the given name inserted
+      state.HELLO:
+        if (!tx_busy) { // wait for tx to not be busy
+          if (HELLO_TEXT[hello_count.q] != "@") { // if we are not at the sentry
+            hello_count.d = hello_count.q + 1;    // increment to next letter
+            new_tx = 1;                           // new data to send
+            tx_data = HELLO_TEXT[hello_count.q];  // send the letter
+          } else {                                // we are at the sentry
+            name_count.d = name_count.q + 1;      // increment the name_count letter
+ 
+            if (ram.read_data != "\n" && ram.read_data != "\r") // if we are not at the end
+              new_tx = 1;                                       // send data
+ 
+            tx_data = ram.read_data;              // send the letter from the RAM
+ 
+            // if we are at the end of the name or out of letters to send
+            if (ram.read_data == "\n" || ram.read_data == "\r" || &name_count.q) {
+              hello_count.d = hello_count.q + 1;  // increment hello_count to pass the sentry
+            }
+          }
+ 
+          // if we have sent all of HELLO_TEXT
+          if (hello_count.q == HELLO_TEXT.WIDTH[0] - 1)
+            state.d = state.IDLE; // return to IDLE
+        }
+        
+        
+        // create a new state here
+     
+        
+        state.PRINT:
+        if (!tx_busy) { // wait for tx to not be busy
+          if (HELLO_TEXT[hello_count.q] != "@") { // if we are not at the sentry
+            hello_count.d = hello_count.q + 1;    // increment to next letter
+            new_tx = 1;                           // new data to send
+            tx_data = HELLO_TEXT[hello_count.q];  // send the letter
+          } else {                                // we are at the sentry
+            name_count.d = name_count.q + 1;      // increment the name_count letter
+ 
+            if (ram.read_data != "\n" && ram.read_data != "\r") // if we are not at the end
+              new_tx = 1;                                       // send data
+ 
+            tx_data = ram.read_data;              // send the letter from the RAM
+           
+            // if we are at the end of the name or out of letters to send
+            if (name_count.q == 0||name_count.q == 4||name_count.q ==8||name_count.q ==12){//insert enter every four items
+              if (enter_switch.q == 0){
+                name_count.d = name_count.q;
+                tx_data = "\n";
+                enter_switch.d = enter_switch.q + 1;
+              }
+              else {
+                enter_switch.d = enter_switch.q + 1;
+                name_count.d = name_count.q + 1;
+              }
+              
+            }
+            if (ram.read_data == "\n" || ram.read_data == "\r" || &name_count.q) {
+              hello_count.d = hello_count.q + 1;  // increment hello_count to pass the sentry
+            }
+          }
+           
+          // if we have sent all of HELLO_TEXT
+          if (hello_count.q == HELLO_TEXT.WIDTH[0] - 1){
+             name_count.d=0;
+             address_count.d=0;
+            state.d = state.PRINT3;} // return to IDLE
+        }
+        
+        
+        state.PRINT2:
+        if (!tx_busy) { // wait for tx to not be busy
+          if (HELLO_TEXT[hello_count.q] != "@") { // if we are not at the sentry
+            hello_count.d = hello_count.q + 1;    // increment to next letter
+            new_tx = 1;                           // new data to send
+            tx_data = HELLO_TEXT[hello_count.q];  // send the letter
+          } else {                                // we are at the sentry
+            address_count.d = address_count.q + 1;      // increment the name_count letter
+ 
+            if (ram.read_data != "\n" && ram.read_data != "\r") // if we are not at the end
+              new_tx = 1;                                       // send data
+ 
+            tx_data = bridge.read_data;              // send the letter from the RAM
+           
+            // if we are at the end of the name or out of letters to send
+            if (address_count.q == 0||address_count.q == 4||address_count.q ==8||address_count.q ==12){//insert enter every four items
+              if (enter_switch.q == 0){
+                address_count.d = address_count.q;
+                tx_data = "\n";
+                enter_switch.d = enter_switch.q + 1;
+              }
+              else {
+                enter_switch.d = enter_switch.q + 1;
+                address_count.d = address_count.q + 1;
+              }
+              
+            }
+            if (ram.read_data == "\n" || ram.read_data == "\r" || &address_count.q) {
+              hello_count.d = hello_count.q + 1;  // increment hello_count to pass the sentry
+            }
+          }
+ 
+          // if we have sent all of HELLO_TEXT
+          if (hello_count.q == HELLO_TEXT.WIDTH[0] - 1)
+            name_count.d=0;
+            address_count.d=0;
+            state.d = state.PRINT3; // return to IDLE
+        }
+        
+      state.PRINT3:
+      if(ram.read_data!="O"){
+        led_count.d[name_count.q]=1;
+        }else{
+        led_count.d[name_count.q]=0;}
+        
+        name_count.d=name_count.q+1;
+        
+        if(name_count.q==15){
+        
+        //led=16b111111110110;
+        state.d=state.IDLE;
+        
+        }
+        
+        
+      state.ROTATION:
+          
+          
+          bridge.write_en = 1; // allow write data into the bridge ram
+          address_count.d = alu2.s[3:0] + alu3.s[3:0]; // (ok) right rotation, but not yet negated the last two bits, need the syntax
+          bridge.write_data = ram.read_data; // write ram into bridge
+          name_count.d = name_count.q + 1;
+        
+          if (address_count.q==12){
+
+              name_count.d=0;
+              address_count.d=1;
+              state.d = state.COPY;
+          }
+        
+      
+        state.COPY:
+          
+          
+          ram.write_en = 1; 
+        
+          if(name_count.q==0&&copy_count.q==1){
+          
+            ram.write_data="O";
+            copy_count.d=0;          
+            name_count.d=name_count.q+1;
+          address_count.d=address_count.q+1;
+          }
+        else {
+          ram.write_data = bridge.read_data; // write ram into bridge
+          name_count.d = name_count.q + 1;
+         
+          address_count.d = address_count.q+1;
+        
+        
+        if (address_count.q==0)
+          {    
+          ram.write_data = bridge.read_data;
+          name_count.d=0;
+          address_count.d=0;
+          state.d=state.BRAIN;
+        }
+       
+        }
+        
+
+        
+        
+        
+        
+       //   if (name_count.q==15)
+       //   {    
+      //    ram.write_data = bridge.read_data;
+       //   name_count.d=0;
+       //   address_count.d=0;
+       //   state.d = state.PRINT2;
+      //  }
+        
+    
+        
+        
+      state.PUSH0:
+        bridge.write_en=1;
+        bridge.write_data="O";
+        address_count.d=address_count.q+1;
+        if(address_count.q==15)
+        {
+        name_count.d=1;
+        address_count.d=16;        
+        state.d=state.PUSH1;
+        }
+        
+       
+        state.PUSH1:
+
+      if(ram.read_data!="O"&&name_count.q<=4){
+         bridge.write_en=1;
+        bridge.write_data=ram.read_data;
+        address_count.d=address_count.q+1;}
+
+          
+
+      name_count.d=name_count.q+1;
+
+      if(name_count.q==4){
+
+        address_count.d=4;
+
+        state.d=state.PUSH2;}
+
+          
+
+     state.PUSH2:
+
+      if(ram.read_data!="O"&&name_count.q<=8){
+        bridge.write_en=1;
+        bridge.write_data=ram.read_data;
+
+        address_count.d=address_count.q+1;}
+
+          
+
+      name_count.d=name_count.q+1;
+
+      if(name_count.q==8){
+
+        address_count.d=8;
+
+        state.d=state.PUSH3;}
+
+      state.PUSH3:
+
+      if(ram.read_data!="O"&&name_count.q<=12){
+        bridge.write_en=1;
+        bridge.write_data=ram.read_data;
+
+        address_count.d=address_count.q+1;}
+
+          
+
+      name_count.d=name_count.q+1;
+
+      if(name_count.q==12){
+
+        address_count.d=12;
+
+        state.d=state.PUSH4;}  
+
+      state.PUSH4:
+      if(ram.read_data!="O")
+{ 
+        bridge.write_en=1;
+        bridge.write_data=ram.read_data;
+
+        address_count.d=address_count.q+1;
+
+        }
+
+      name_count.d=name_count.q+1;
+
+      if(name_count.q==15){
+         name_count.d=0;
+        address_count.d=1;
+          
+
+        state.d=state.COPY;}
+
+   /*   state.ADD:
+        ram.write_en=1;
+        if(zero.q==1){
+          ram.write_data="O";
+          zero.d=0;
+        }
+        else if(ram.read_data==bridge.read_data&&ram.read_data!="O"){
+          case(bridge.read_data){
+             "A":ram.write_data="B";
+             "B":ram.write_data="C";
+             "C":ram.write_data="D";
+             "D":ram.write_data="E";
+             "E":ram.write_data="F";
+             "F":ram.write_data="G";
+             "G":ram.write_data="X";
+            "O":ram.write_data="O";
+            default:ram.write_data="Z";
+          
+          }
+          zero.d=1;}
+        name_count.d=name_count.q+1;
+        address_count.d=address_count.q+1;
+        if(address_count.q==15){
+           zero.d=0;
+           name_count.d=0;
+          address_count.d=1;
+          state.d=state.PRINT;
+          }
+          
+      state.PUSH5:
+      bridge.write_en=1;
+        if(ram.read_data!="O"){
+          buffer_count.d=buffer_count.q+1;
+          }
+        name_count.d=name_count.q+1;
+        if (buffer_count.q==2){
+          bridge.write_data=ram.read_data;
+          buffer_count.d=0;
+          name_count.d=0;
+          address_count.d=1;
+          state.d=state.COPY;
+        }*/
+        
+    }
+    
+    
+     
+  
+}
+}
+     
+      
+    

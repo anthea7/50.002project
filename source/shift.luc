@@ -1,0 +1,25 @@
+global Shi{
+  const SHL=4d0;   //100000
+  const SHR=4d1;   //100001
+  const SRA=4d3;   //100011
+}
+module shift (
+    input a[32],                        //input a 
+    input b[32],                        //input b 
+    input alufn[4],                    //input alufn
+    output s[32]                        //return the result
+  ) {
+
+  always {
+    s=32d0;                             //set output defalut to 0
+    case(alufn){ 
+      Shi.SHL:                         //SHift left  by b digits, replace by 0
+      s=a<<b;
+      Shi.SHR:                         //Shift right by b digits, replace by 0
+      s=a>>b;
+      Shi.SRA:                         //Shift right by b digits, replace by a[7]
+        if(a[31]==0) s=a>>>b;
+        else s=$signed(a)>>>b;
+    }
+  }
+}
